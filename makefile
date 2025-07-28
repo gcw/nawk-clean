@@ -40,16 +40,16 @@ CC = $(HOSTCC)  # change this is cross-compiling.
 # YACC = yacc -d -b awkgram
 YACC = bison -d
 
-OFILES = b.o main.o parse.o proctab.o tran.o lib.o run.o lex.o
+OFILES = b.o main.o parse.o proctab.o tran.o lib.o run.o lex.o jit.o
 
 SOURCE = awk.h awkgram.tab.c awkgram.tab.h proto.h awkgram.y lex.c b.c main.c \
-	maketab.c parse.c lib.c run.c tran.c proctab.c
+	maketab.c parse.c lib.c run.c tran.c proctab.c jit.c
 
 LISTING = awk.h proto.h awkgram.y lex.c b.c main.c maketab.c parse.c \
-	lib.c run.c tran.c
+	lib.c run.c tran.c jit.c
 
 SHIP = README LICENSE FIXES $(SOURCE) awkgram.tab.[ch].bak makefile  \
-	 awk.1
+	awk.1 jit.h
 
 a.out:	awkgram.tab.o $(OFILES)
 	$(CC) $(CFLAGS) awkgram.tab.o $(OFILES) $(ALLOC)  -lm
