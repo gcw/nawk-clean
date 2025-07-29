@@ -106,8 +106,20 @@ bool jit_emit_int64(JitContext *ctx, int64_t value)
     return true;
 }
 
+// Patch a 32-bit integer at a specific offset
+bool jit_patch_int32(JitContext *ctx, size_t offset, int32_t value)
+{
+    if (offset + sizeof(int32_t) > ctx->capacity) {
+        fprintf(stderr, "JIT patch overflow\n");
+        return false;
+    }
+    memcpy(ctx->buffer + offset, &value, sizeof(int32_t));
+    return true;
+}
+
 // Emit a NOP instruction (for alignment or placeholders)
 bool jit_emit_nop(JitContext *ctx)
+
 {
     return jit_emit_byte(ctx, 0x90); // x86 NOP instruction
 }
@@ -389,6 +401,81 @@ bool jit_compile_node(JitContext *ctx, Node *node, JitRuntimeContext *runtime_ct
             if (!jit_emit_byte(ctx, 0xC1)) return false; // XMM0, XMM1
             }
             break;
+        case CAT: {
+            // Compile left operand (result in RAX, which holds char*)
+            if (!jit_compile_node(ctx, node->narg[0], runtime_ctx)) return false;
+            // Push RAX (char*) onto stack
+            if (!jit_emit_byte(ctx, 0x50)) return false; // PUSH RAX
+
+            // Compile right operand (result in RAX, which holds char*)
+            if (!jit_compile_node(ctx, node->narg[1], runtime_ctx)) return false;
+            // Pop previous result into RCX
+            if (!jit_emit_byte(ctx, 0x59)) return false; // POP RCX
+
+            // Call jit_cat_helper(RCX, RAX)
+            // mov rdi, rcx
+            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
+            if (!jit_emit_byte(ctx, 0x89)) return false; // MOV
+            if (!jit_emit_byte(ctx, 0xCF)) return false; // RDI, RCX
+
+            // mov rsi, rax
+            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
+            if (!jit_emit_byte(ctx, 0x89)) return false; // MOV
+            if (!jit_emit_byte(ctx, 0xC6)) return false; // RSI, RAX
+
+            // mov rax, address of jit_cat_helper
+            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
+            if (!jit_emit_byte(ctx, 0xB8)) return false; // MOV RAX, imm64
+            if (!jit_emit_int64(ctx, (int64_t)jit_cat_helper)) return false;
+
+            // call rax
+            if (!jit_emit_byte(ctx, 0xFF)) return false; // CALL
+            if (!jit_emit_byte(ctx, 0xD0)) return false; // RAX
+            }
+            break;
+        case WHILE: {
+            size_t loop_start_offset = ctx->offset;
+
+            // Compile condition
+            if (!jit_compile_node(ctx, node->narg[0], runtime_ctx)) return false;
+
+            // Compare XMM0 with 0.0 (false)
+            // xorpd xmm1, xmm1 (XMM1 = 0.0)
+            if (!jit_emit_byte(ctx, 0x66)) return false;
+            if (!jit_emit_byte(ctx, 0x0F)) return false;
+            if (!jit_emit_byte(ctx, 0x57)) return false;
+            if (!jit_emit_byte(ctx, 0xC9)) return false; // xmm1, xmm1
+
+            // ucomisd xmm0, xmm1 (compare XMM0 with XMM1)
+            if (!jit_emit_byte(ctx, 0x66)) return false;
+            if (!jit_emit_byte(ctx, 0x0F)) return false;
+            if (!jit_emit_byte(ctx, 0x2E)) return false;
+            if (!jit_emit_byte(ctx, 0xC1)) return false; // xmm0, xmm1
+
+            // je (jump if equal, i.e., condition is false)
+            if (!jit_emit_byte(ctx, 0x0F)) return false;
+            if (!jit_emit_byte(ctx, 0x84)) return false; // JZ (jump if zero flag is set)
+            size_t jump_to_end_offset = ctx->offset;
+            if (!jit_emit_int32(ctx, 0)) return false; // Placeholder for relative offset
+
+            // Compile body
+            if (!jit_compile_node(ctx, node->narg[1], runtime_ctx)) return false;
+
+            // jmp (unconditional jump to loop start)
+            if (!jit_emit_byte(ctx, 0xE9)) return false;
+            size_t jump_to_start_offset = ctx->offset;
+            if (!jit_emit_int32(ctx, 0)) return false; // Placeholder for relative offset
+
+            // Calculate and patch offsets
+            size_t loop_end_offset = ctx->offset;
+            int32_t relative_jump_to_end = (int32_t)(loop_end_offset - (jump_to_end_offset + sizeof(int32_t)));
+            if (!jit_patch_int32(ctx, jump_to_end_offset, relative_jump_to_end)) return false;
+
+            int32_t relative_jump_to_start = (int32_t)(loop_start_offset - (jump_to_start_offset + sizeof(int32_t)));
+            if (!jit_patch_int32(ctx, jump_to_start_offset, relative_jump_to_start)) return false;
+
+            break;
+        }
         default:
             fprintf(stderr, "JIT: Unsupported node type %d\n", node->nobj);
             return false;

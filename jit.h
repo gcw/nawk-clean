@@ -27,6 +27,9 @@ bool jit_emit_int32(JitContext *ctx, int32_t value);
 // Emit a 64-bit integer
 bool jit_emit_int64(JitContext *ctx, int64_t value);
 
+// Patch a 32-bit integer at a specific offset
+bool jit_patch_int32(JitContext *ctx, size_t offset, int32_t value);
+
 // Emit a NOP instruction (for alignment or placeholders)
 bool jit_emit_nop(JitContext *ctx);
 
