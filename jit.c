@@ -228,6 +228,70 @@ bool jit_compile_node(JitContext *ctx, Node *node, JitRuntimeContext *runtime_ct
             if (!jit_emit_byte(ctx, 0xC1)) return false; // XMM0, XMM1
             }
             break;
+        case ADD: {
+            // Compile left operand (result in XMM0)
+            if (!jit_compile_node(ctx, node->narg[0], runtime_ctx)) return false;
+            // Push XMM0 onto stack
+            // sub rsp, 8
+            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
+            if (!jit_emit_byte(ctx, 0x83)) return false; // SUB
+            if (!jit_emit_byte(ctx, 0xEC)) return false; // RSP, imm8
+            if (!jit_emit_byte(ctx, 0x08)) return false; // 8
+
+            // movsd [rsp], xmm0
+            if (!jit_emit_byte(ctx, 0xF2)) return false; // REP prefix for MOVSD
+            if (!jit_emit_byte(ctx, 0x0F)) return false; // MOVSD opcode prefix
+            if (!jit_emit_byte(ctx, 0x11)) return false; // MOVSD opcode
+            if (!jit_emit_byte(ctx, 0x04)) return false; // [RSP]
+            if (!jit_emit_byte(ctx, 0x24)) return false; // SIB byte
+
+            // Compile right operand (result in XMM0)
+            if (!jit_compile_node(ctx, node->narg[1], runtime_ctx)) return false;
+
+            // Pop previous result into XMM1
+            // movsd xmm1, [rsp]
+            if (!jit_emit_byte(ctx, 0xF2)) return false; // REP prefix for MOVSD
+            if (!jit_emit_byte(ctx, 0x0F)) return false; // MOVSD opcode prefix
+            if (!jit_emit_byte(ctx, 0x10)) return false; // MOVSD opcode
+            if (!jit_emit_byte(ctx, 0x0C)) return false; // XMM1, [RSP]
+            if (!jit_emit_byte(ctx, 0x24)) return false; // SIB byte
+
+            // add rsp, 8
+            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
+            if (!jit_emit_byte(ctx, 0x83)) return false; // ADD
+            if (!jit_emit_byte(ctx, 0xC4)) return false; // RSP, imm8
+            if (!jit_emit_byte(ctx, 0x08)) return false; // 8
+
+            // addsd xmm0, xmm1 (XMM0 = XMM0 + XMM1)
+            if (!jit_emit_byte(ctx, 0xF2)) return false; // REP prefix for ADDSD
+            if (!jit_emit_byte(ctx, 0x0F)) return false; // ADDSD opcode prefix
+            if (!jit_emit_byte(ctx, 0x58)) return false; // ADDSD opcode
+            if (!jit_emit_byte(ctx, 0xC1)) return false; // XMM0, XMM1
+            }
+            break;
+        case UMINUS: {
+            // Compile operand (result in XMM0)
+            if (!jit_compile_node(ctx, node->narg[0], runtime_ctx)) return false;
+
+            // xorpd xmm1, xmm1 (XMM1 = 0.0)
+            if (!jit_emit_byte(ctx, 0x66)) return false; // Operand size prefix
+            if (!jit_emit_byte(ctx, 0x0F)) return false; // SSE opcode prefix
+            if (!jit_emit_byte(ctx, 0x57)) return false; // XORPD
+            if (!jit_emit_byte(ctx, 0xC9)) return false; // XMM1, XMM1
+
+            // subsd xmm0, xmm1 (XMM0 = XMM1 - XMM0) to negate
+            if (!jit_emit_byte(ctx, 0xF2)) return false; // REP prefix for SUBSD
+            if (!jit_emit_byte(ctx, 0x0F)) return false; // SUBSD opcode prefix
+            if (!jit_emit_byte(ctx, 0x5C)) return false; // SUBSD opcode
+            if (!jit_emit_byte(ctx, 0xC8)) return false; // XMM1, XMM0
+
+            // movapd xmm0, xmm1 (move result to XMM0)
+            if (!jit_emit_byte(ctx, 0x66)) return false; // Operand size prefix
+            if (!jit_emit_byte(ctx, 0x0F)) return false; // SSE opcode prefix
+            if (!jit_emit_byte(ctx, 0x28)) return false; // MOVAPD
+            if (!jit_emit_byte(ctx, 0xC1)) return false; // XMM0, XMM1
+            }
+            break;
         case CAT: {
             // Compile left operand (result in RAX, which holds char*)
             if (!jit_compile_node(ctx, node->narg[0], runtime_ctx)) return false;
