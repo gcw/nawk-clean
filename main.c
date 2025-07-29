@@ -41,8 +41,10 @@ Awkfloat	srand_seed = 1;
 char	*cmdname;	/* gets argv[0] for error messages */
 extern	FILE	*yyin;	/* lex input file */
 char	*lexprog;	/* points to program argument if it exists */
-extern	int errorflag;	/* non-zero if any syntax errors; set by yyerror */
-enum compile_states	compile_time = ERROR_PRINTING;
+extern int errorflag;    /* non-zero if any syntax errors; set by yyerror */
+enum compile_states    compile_time = ERROR_PRINTING;
+
+Cell *i_cell; // Temporary global for JIT loop variable 'i'
 
 static char	**pfile;	/* program filenames from -f's */
 static size_t	maxpfile;	/* max program filename */

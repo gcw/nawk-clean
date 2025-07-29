@@ -1,3 +1,6 @@
+#ifndef AWK_H
+#define AWK_H
+
 /****************************************************************
 Copyright (C) Lucent Technologies 1997
 All Rights Reserved
@@ -272,3 +275,5 @@ typedef struct fa {
 
 
 #include "proto.h"
+
+#endif // AWK_H

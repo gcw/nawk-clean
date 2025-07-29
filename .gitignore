@@ -7,3 +7,5 @@ testdir/foo*
 testdir/temp*
 *.pdf
 *.mail
+llm/
+GEMINI.md

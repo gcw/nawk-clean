@@ -39,6 +39,7 @@ THIS SOFTWARE.
 #include <sys/wait.h>
 #include "awk.h"
 #include "awkgram.tab.h"
+#include "jit.h"
 
 
 static void stdinit(void);
@@ -1923,13 +1924,59 @@ Cell *forstat(Node **a, int n)	/* for (a[0]; a[1]; a[2]) a[3] */
 
 	x = execute(a[0]);
 	tempfree(x);
+
+	JitContext ctx;
+	size_t jit_buffer_size = 4096; // Example size
+	bool jit_enabled = true; // Flag to control JIT path
+	JitRuntimeContext runtime_ctx; // Declare runtime_ctx here
+
+	if (!jit_init_context(&ctx, jit_buffer_size)) {
+		jit_enabled = false; // JIT initialization failed
+	}
+
+	// Compile the loop body only if JIT is enabled
+	if (jit_enabled) {
+		// Assuming 'i' is the loop variable and its Cell* can be obtained
+		// This is a placeholder; actual lookup will be more complex.
+		// For the t.jit_simd.awk test, 'i' is a local variable in the BEGIN block.
+		// We need a way to get its Cell* from the symbol table.
+		extern Cell *i_cell; // Declare i_cell as extern for now
+		runtime_ctx.loop_var_cell = i_cell;
+
+		if (!jit_compile_node(&ctx, a[3], &runtime_ctx)) {
+			jit_enabled = false; // JIT compilation failed for this node
+		}
+	}
+
+	if (jit_enabled) {
+		// Add a return instruction at the end of the JIT-compiled code
+		if (!jit_emit_byte(&ctx, 0xC3)) { // RET
+			jit_enabled = false; // Failed to emit return instruction
+		}
+	}
+
+	typedef double (*JitFunc)(JitRuntimeContext *);
+	JitFunc func = (JitFunc)ctx.buffer;
+
 	for (;;) {
 		if (a[1]!=NULL) {
 			x = execute(a[1]);
 			if (!istrue(x)) return(x);
 			else tempfree(x);
 		}
-		x = execute(a[3]);
+
+		if (jit_enabled) {
+			// Execute JIT-compiled loop body
+			double jit_result = func(&runtime_ctx);
+			printf("JIT Loop Body Result: %f\n", jit_result);
+			// For now, we still execute the original AST node to maintain full functionality
+			// In a full JIT, this would be replaced by the JIT-compiled code's effect
+			x = execute(a[3]); // Keep for now, but ideally remove later
+		} else {
+			// Fallback to original interpreter if JIT is not enabled or compilation failed
+			x = execute(a[3]);
+		}
+
 		if (isbreak(x))		/* turn off break */
 			return True;
 		if (isnext(x) || isexit(x) || isret(x))
@@ -1937,6 +1984,11 @@ Cell *forstat(Node **a, int n)	/* for (a[0]; a[1]; a[2]) a[3] */
 		tempfree(x);
 		x = execute(a[2]);
 		tempfree(x);
+	}
+
+	// Free JIT memory after the loop (this part will be reached if loop exits normally)
+	if (ctx.buffer != NULL) { // Only free if allocation was successful
+		jit_free_executable_memory(ctx.buffer, ctx.capacity);
 	}
 }
 
