@@ -3,6 +3,7 @@
 #include "awkgram.tab.h" // Include for token definitions like NUMBER
 #include <sys/mman.h>
 #include <stdio.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -269,6 +270,102 @@ bool jit_compile_node(JitContext *ctx, Node *node, JitRuntimeContext *runtime_ct
             if (!jit_emit_byte(ctx, 0xC1)) return false; // XMM0, XMM1
             }
             break;
+        case DIVIDE: {
+            // Compile left operand (result in XMM0)
+            if (!jit_compile_node(ctx, node->narg[0], runtime_ctx)) return false;
+            // Push XMM0 onto stack
+            // sub rsp, 8
+            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
+            if (!jit_emit_byte(ctx, 0x83)) return false; // SUB
+            if (!jit_emit_byte(ctx, 0xEC)) return false; // RSP, imm8
+            if (!jit_emit_byte(ctx, 0x08)) return false; // 8
+
+            // movsd [rsp], xmm0
+            if (!jit_emit_byte(ctx, 0xF2)) return false; // REP prefix for MOVSD
+            if (!jit_emit_byte(ctx, 0x0F)) return false; // MOVSD opcode prefix
+            if (!jit_emit_byte(ctx, 0x11)) return false; // MOVSD opcode
+            if (!jit_emit_byte(ctx, 0x04)) return false; // [RSP]
+            if (!jit_emit_byte(ctx, 0x24)) return false; // SIB byte
+
+            // Compile right operand (result in XMM0)
+            if (!jit_compile_node(ctx, node->narg[1], runtime_ctx)) return false;
+
+            // Pop previous result into XMM1
+            // movsd xmm1, [rsp]
+            if (!jit_emit_byte(ctx, 0xF2)) return false; // REP prefix for MOVSD
+            if (!jit_emit_byte(ctx, 0x0F)) return false; // MOVSD opcode prefix
+            if (!jit_emit_byte(ctx, 0x10)) return false; // MOVSD opcode
+            if (!jit_emit_byte(ctx, 0x0C)) return false; // XMM1, [RSP]
+            if (!jit_emit_byte(ctx, 0x24)) return false; // SIB byte
+
+            // add rsp, 8
+            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
+            if (!jit_emit_byte(ctx, 0x83)) return false; // ADD
+            if (!jit_emit_byte(ctx, 0xC4)) return false; // RSP, imm8
+            if (!jit_emit_byte(ctx, 0x08)) return false; // 8
+
+            // divsd xmm0, xmm1 (XMM0 = XMM0 / XMM1)
+            if (!jit_emit_byte(ctx, 0xF2)) return false; // REP prefix for DIVSD
+            if (!jit_emit_byte(ctx, 0x0F)) return false; // DIVSD opcode prefix
+            if (!jit_emit_byte(ctx, 0x5E)) return false; // DIVSD opcode
+            if (!jit_emit_byte(ctx, 0xC1)) return false; // XMM0, XMM1
+            }
+            break;
+        case MOD: {
+            // Compile left operand (result in XMM0)
+            if (!jit_compile_node(ctx, node->narg[0], runtime_ctx)) return false;
+            // Push XMM0 onto stack
+            // sub rsp, 8
+            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
+            if (!jit_emit_byte(ctx, 0x83)) return false; // SUB
+            if (!jit_emit_byte(ctx, 0xEC)) return false; // RSP, imm8
+            if (!jit_emit_byte(ctx, 0x08)) return false; // 8
+
+            // movsd [rsp], xmm0
+            if (!jit_emit_byte(ctx, 0xF2)) return false; // REP prefix for MOVSD
+            if (!jit_emit_byte(ctx, 0x0F)) return false; // MOVSD opcode prefix
+            if (!jit_emit_byte(ctx, 0x11)) return false; // MOVSD opcode
+            if (!jit_emit_byte(ctx, 0x04)) return false; // [RSP]
+            if (!jit_emit_byte(ctx, 0x24)) return false; // SIB byte
+
+            // Compile right operand (result in XMM0)
+            if (!jit_compile_node(ctx, node->narg[1], runtime_ctx)) return false;
+
+            // Pop previous result into XMM1
+            // movsd xmm1, [rsp]
+            if (!jit_emit_byte(ctx, 0xF2)) return false; // REP prefix for MOVSD
+            if (!jit_emit_byte(ctx, 0x0F)) return false; // MOVSD opcode prefix
+            if (!jit_emit_byte(ctx, 0x10)) return false; // MOVSD opcode
+            if (!jit_emit_byte(ctx, 0x0C)) return false; // XMM1, [RSP]
+            if (!jit_emit_byte(ctx, 0x24)) return false; // SIB byte
+
+            // add rsp, 8
+            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
+            if (!jit_emit_byte(ctx, 0x83)) return false; // ADD
+            if (!jit_emit_byte(ctx, 0xC4)) return false; // RSP, imm8
+            if (!jit_emit_byte(ctx, 0x08)) return false; // 8
+
+            // Call fmod(XMM0, XMM1)
+            // mov rdi, xmm0 (double in XMM0 to RDI)
+            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
+            if (!jit_emit_byte(ctx, 0x89)) return false; // MOV
+            if (!jit_emit_byte(ctx, 0xC7)) return false; // RDI, RAX
+
+            // mov rsi, xmm1 (double in XMM1 to RSI)
+            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
+            if (!jit_emit_byte(ctx, 0x89)) return false; // MOV
+            if (!jit_emit_byte(ctx, 0xCE)) return false; // RSI, RCX
+
+            // mov rax, address of fmod
+            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
+            if (!jit_emit_byte(ctx, 0xB8)) return false; // MOV RAX, imm64
+            if (!jit_emit_int64(ctx, (int64_t)fmod)) return false;
+
+            // call rax
+            if (!jit_emit_byte(ctx, 0xFF)) return false; // CALL
+            if (!jit_emit_byte(ctx, 0xD0)) return false; // RAX
+            }
+            break;
         case UMINUS: {
             // Compile operand (result in XMM0)
             if (!jit_compile_node(ctx, node->narg[0], runtime_ctx)) return false;
@@ -290,59 +387,6 @@ bool jit_compile_node(JitContext *ctx, Node *node, JitRuntimeContext *runtime_ct
             if (!jit_emit_byte(ctx, 0x0F)) return false; // SSE opcode prefix
             if (!jit_emit_byte(ctx, 0x28)) return false; // MOVAPD
             if (!jit_emit_byte(ctx, 0xC1)) return false; // XMM0, XMM1
-            }
-            break;
-        case CAT: {
-            // Compile left operand (result in RAX, which holds char*)
-            if (!jit_compile_node(ctx, node->narg[0], runtime_ctx)) return false;
-            // Push RAX (char*) onto stack
-            if (!jit_emit_byte(ctx, 0x50)) return false; // PUSH RAX
-
-            // Compile right operand (result in RAX, which holds char*)
-            if (!jit_compile_node(ctx, node->narg[1], runtime_ctx)) return false;
-            // Pop previous result into RCX
-            if (!jit_emit_byte(ctx, 0x59)) return false; // POP RCX
-
-            // Call jit_cat_helper(RCX, RAX)
-            // mov rdi, rcx
-            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
-            if (!jit_emit_byte(ctx, 0x89)) return false; // MOV
-            if (!jit_emit_byte(ctx, 0xCF)) return false; // RDI, RCX
-
-            // mov rsi, rax
-            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
-            if (!jit_emit_byte(ctx, 0x89)) return false; // MOV
-            if (!jit_emit_byte(ctx, 0xC6)) return false; // RSI, RAX
-
-            // mov rax, address of jit_cat_helper
-            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
-            if (!jit_emit_byte(ctx, 0xB8)) return false; // MOV RAX, imm64
-            if (!jit_emit_int64(ctx, (int64_t)jit_cat_helper)) return false;
-
-            // call rax
-            if (!jit_emit_byte(ctx, 0xFF)) return false; // CALL
-            if (!jit_emit_byte(ctx, 0xD0)) return false; // RAX
-            }
-            break;
-        case PRINT: {
-            // Compile the argument to PRINT (result in XMM0 for double, RAX for char*)
-            if (!jit_compile_node(ctx, node->narg[0], runtime_ctx)) return false;
-
-            // For now, assume PRINT takes a double from XMM0 and prints it.
-            // This will need to be generalized for strings and other types.
-            // mov rdi, rax (move argument to RDI for printf)
-            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
-            if (!jit_emit_byte(ctx, 0x89)) return false; // MOV
-            if (!jit_emit_byte(ctx, 0xC7)) return false; // RDI, RAX
-
-            // mov rax, address of printf
-            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
-            if (!jit_emit_byte(ctx, 0xB8)) return false; // MOV RAX, imm64
-            if (!jit_emit_int64(ctx, (int64_t)printf)) return false;
-
-            // call rax
-            if (!jit_emit_byte(ctx, 0xFF)) return false; // CALL
-            if (!jit_emit_byte(ctx, 0xD0)) return false; // RAX
             }
             break;
         default:
