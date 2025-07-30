@@ -128,6 +128,7 @@ bool jit_emit_nop(JitContext *ctx)
 bool jit_compile_node(JitContext *ctx, Node *node, JitRuntimeContext *runtime_ctx)
 {
     switch (node->nobj) {
+
         case NUMBER: {
             Cell *c = (Cell *)node->narg[0];
             int64_t val = (int64_t)c->fval; // Assuming fval holds the numeric value
@@ -279,6 +280,47 @@ bool jit_compile_node(JitContext *ctx, Node *node, JitRuntimeContext *runtime_ct
             if (!jit_emit_byte(ctx, 0xF2)) return false; // REP prefix for ADDSD
             if (!jit_emit_byte(ctx, 0x0F)) return false; // ADDSD opcode prefix
             if (!jit_emit_byte(ctx, 0x58)) return false; // ADDSD opcode
+            if (!jit_emit_byte(ctx, 0xC1)) return false; // XMM0, XMM1
+            }
+            break;
+        case 310: { // MINUS
+            // Compile left operand (result in XMM0)
+            if (!jit_compile_node(ctx, node->narg[0], runtime_ctx)) return false;
+            // Push XMM0 onto stack
+            // sub rsp, 8
+            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
+            if (!jit_emit_byte(ctx, 0x83)) return false; // SUB
+            if (!jit_emit_byte(ctx, 0xEC)) return false; // RSP, imm8
+            if (!jit_emit_byte(ctx, 0x08)) return false; // 8
+
+            // movsd [rsp], xmm0
+            if (!jit_emit_byte(ctx, 0xF2)) return false; // REP prefix for MOVSD
+            if (!jit_emit_byte(ctx, 0x0F)) return false; // MOVSD opcode prefix
+            if (!jit_emit_byte(ctx, 0x11)) return false; // MOVSD opcode
+            if (!jit_emit_byte(ctx, 0x04)) return false; // [RSP]
+            if (!jit_emit_byte(ctx, 0x24)) return false; // SIB byte
+
+            // Compile right operand (result in XMM0)
+            if (!jit_compile_node(ctx, node->narg[1], runtime_ctx)) return false;
+
+            // Pop previous result into XMM1
+            // movsd xmm1, [rsp]
+            if (!jit_emit_byte(ctx, 0xF2)) return false; // REP prefix for MOVSD
+            if (!jit_emit_byte(ctx, 0x0F)) return false; // MOVSD opcode prefix
+            if (!jit_emit_byte(ctx, 0x10)) return false; // MOVSD opcode
+            if (!jit_emit_byte(ctx, 0x0C)) return false; // XMM1, [RSP]
+            if (!jit_emit_byte(ctx, 0x24)) return false; // SIB byte
+
+            // add rsp, 8
+            if (!jit_emit_byte(ctx, 0x48)) return false; // REX.W
+            if (!jit_emit_byte(ctx, 0x83)) return false; // ADD
+            if (!jit_emit_byte(ctx, 0xC4)) return false; // RSP, imm8
+            if (!jit_emit_byte(ctx, 0x08)) return false; // 8
+
+            // subsd xmm0, xmm1 (XMM0 = XMM0 - XMM1)
+            if (!jit_emit_byte(ctx, 0xF2)) return false; // REP prefix for SUBSD
+            if (!jit_emit_byte(ctx, 0x0F)) return false; // SUBSD opcode prefix
+            if (!jit_emit_byte(ctx, 0x5C)) return false; // SUBSD opcode
             if (!jit_emit_byte(ctx, 0xC1)) return false; // XMM0, XMM1
             }
             break;

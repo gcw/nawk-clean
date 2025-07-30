@@ -68,6 +68,7 @@ Node *node2(int a, Node *b, Node *c)
 	return(x);
 }
 
+
 Node *node3(int a, Node *b, Node *c, Node *d)
 {
 	Node *x;

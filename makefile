@@ -33,7 +33,7 @@ CFLAGS = -O2
 #CC = cc -fprofile-arcs -ftest-coverage # then gcov f1.c; cat f1.c.gcov
 HOSTCC = cc -g -Wall -pedantic -Wcast-qual
 # HOSTCC = g++ -g -Wall -pedantic -Wcast-qual
-CC = $(HOSTCC)  # change this is cross-compiling.
+CC = $(HOSTCC) -I.  # change this is cross-compiling.
 
 # By fiat, to make our lives easier, yacc is now defined to be bison.
 # If you want something else, you're on your own.
@@ -96,6 +96,7 @@ names:
 
 test check:
 	./REGRESS
+	./test_jit_memory
 
 clean: testclean
 	rm -f a.out *.o *.obj maketab maketab.exe *.bb *.bbg *.da *.gcov *.gcno *.gcda # proctab.c
